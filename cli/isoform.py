@@ -12,7 +12,8 @@ from rich import print
 
 from src.logger import init_logger, log
 from src.progress import custom_progress
-from src.reader import check_bam, load_ats, load_barcodes
+from src.reader import load_ats
+from src.bam import Bam
 from core.isoform import GTFUtils, assign_isoform
 
 
@@ -20,11 +21,10 @@ def consumer(
     input_queue: Queue,
     output_queue: Queue,
     gtf: GTFUtils,
-    bams: List[str],
+    bams: List[Bam],
     mu_f: int,
     sigma_f: int,
     min_frag_length: int,
-    barcodes: dict
 ):
     u"""
     consumer
@@ -44,8 +44,6 @@ def consumer(
             if not iso_tbl:
                 output_queue.put(res)
                 continue
-
-            iso_tbl.barcodes = barcodes
 
             iso_wins_list = iso_tbl.winList
 
@@ -261,15 +259,10 @@ def isoform(
     init_logger("DEBUG" if debug else "INFO")
     log.info("Isoform inference")
 
-    for b in bams:
-        if not check_bam(b):
-            log.error(f"{bams} is not a valid bam file")
-            exit(1)
+    bams = [Bam(b) for b in bams]
 
     gtf = GTFUtils(gtf)
     ats = load_ats(ats)
-
-    barcodes = {b: load_barcodes(b.replace(".bam", ".barcode")) for b in bams}
 
     if not ats:
         exit(0)
@@ -302,7 +295,6 @@ def isoform(
                 mu_f,
                 sigma_f,
                 min_frag_length,
-                barcodes,
             )
         )
         p.daemon = True

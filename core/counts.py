@@ -6,71 +6,13 @@ Created at 2021.04.25 by Zhang
 Functions used to count the single cell level expression and calculate PSI
 """
 import gzip
-
 from multiprocessing import Process, Queue
 from typing import Dict, List
 
-import pysam
-
-from src.loci import BED
-from src.logger import log
-from src.progress import custom_progress
-from src.reader import check_bam, load_ats, load_gtf
+from src.bam import Bam
 from src.expression import Expr
-
-
-class Bam(object):
-    u"""
-    Handle the bam related processing
-    """
-
-    def __init__(self, path: str, label: str = None):
-        u"""
-        init this class with bam path and file label
-        """
-        if not check_bam(path):
-            log.error(f"{path} is not a valid bam file")
-            exit(1)
-        self.path = path
-
-        self.label = "" if label is None else label
-    
-    def reads(self, region: BED, cell_tag: str = "CB", umi_tag: str = "UB"):
-        u"""
-        generator to get all cell barcode and umi barcode from specific region
-        :params region: target region
-        :params cell_tag: the cell barcode tag in 10x bam
-        :params umi_tag: the umi tag in 10x bam
-        :return cell barcode and umi
-        """
-        with pysam.AlignmentFile(self.path) as r:
-            for record in r.fetch(region.chromosome, region.start, region.end):
-                if record.is_qcfail or record.is_unmapped:
-                    continue
-
-                if record.has_tag("NH") and record.get_tag("NH") > 1:
-                    continue
-                    
-                if record.has_tag(cell_tag) and record.has_tag(umi_tag):
-                    yield record.get_tag(cell_tag), record.get_tag(umi_tag)
-
-    def reads_bulk(self, region: BED):
-        u"""
-        generator to get all cell barcode and umi barcode from specific region
-        :params region: target region
-        :return the nubmer of reads
-        """
-        count = 0
-        with pysam.AlignmentFile(self.path) as r:
-            for record in r.fetch(region.chromosome, region.start, region.end):
-                if record.is_qcfail or record.is_unmapped:
-                    continue
-
-                if record.has_tag("NH") and record.get_tag("NH") > 1:
-                    continue
-                    
-                count += 1
-        return count
+from src.progress import custom_progress
+from src.reader import load_ats, load_gtf
 
 
 def count_consumer(bam_files: List[Bam], input_queue: Queue, output_queue: Queue, gtf: bool):
@@ -90,7 +32,7 @@ def count_consumer(bam_files: List[Bam], input_queue: Queue, output_queue: Queue
 
             for b in bam_files:
                 for cb, ub in b.reads(region = r):
-                    col_id = f"{cb}_{b.label}" if b.label else cb
+                    col_id = f"{cb}_{b.alias}" if b.alias else cb
 
                     if col_id not in res[row_id].keys():
                         res[row_id][col_id] = set()

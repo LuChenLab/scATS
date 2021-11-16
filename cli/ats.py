@@ -15,7 +15,7 @@ from core.isoform import GTFUtils
 from core.model import AtsModel, Parameters
 from src.logger import init_logger, log
 from src.progress import custom_progress
-from src.reader import check_bam, load_barcodes
+from src.bam import Bam
 
 
 class ATSParams(object):
@@ -26,7 +26,7 @@ class ATSParams(object):
     def __init__(
         self,
         gtf: str,
-        bam: List[str],
+        bam: List[Bam],
         n_max_ats: int = 5,
         n_min_ats: int = 1,
         min_ws: float = 0.01,
@@ -49,14 +49,7 @@ class ATSParams(object):
 
         gtf = GTFUtils(gtf, iterator=False)
         self.gtf = gtf.read_gtf(debug)
-        self.bam = self.check_path(bam)
-
-        self.barcodes = {b: load_barcodes(
-            b.replace(".bam", ".barcode")) for b in self.bam}
-
-        if not self.bam:
-            raise ValueError("Please input valid bam files")
-
+        self.bam = bam
         self.n_max_ats = n_max_ats
         self.n_min_ats = n_min_ats
         self.min_ws = min_ws
@@ -322,7 +315,7 @@ def ats(
     try:
         params = ATSParams(
             gtf=gtf,
-            bam=bams,
+            bam=[Bam(b) for b in bams],
             n_max_ats=n_max_ats,
             n_min_ats=n_min_ats,
             min_ws=min_ws,
@@ -365,13 +358,14 @@ def ats(
                 header = '\t'.join(params.keys())
                 w.write(f"{header}\n")
 
-                while not progress.finished:
+                while not progress.finished and consumers:
                     for res in output_queue.get():
                         if res:
                             w.write(f"{res}\n")
                             w.flush()
 
                     progress.update(task, advance=1)
+                    consumers = [x for x in consumers if x.is_alive()]
 
         log.info("DONE")
     except KeyboardInterrupt:
