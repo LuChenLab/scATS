@@ -356,12 +356,12 @@ def ats(
                 w.write(f"{header}\n")
 
                 while not progress.finished:
-                    progress.update(task, advance=1)
                     res = output_queue.get(block=True, timeout=None)
                     for r in res:
                         if r:
-                            w.write(f"{res}\n")
+                            w.write(f"{r}\n")
                             w.flush()
+                    progress.update(task, advance=1)
 
         log.info("DONE")
     except KeyboardInterrupt:
