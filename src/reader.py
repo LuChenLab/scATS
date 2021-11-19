@@ -7,13 +7,13 @@ Preprocess of UTR bed and BAM, to get the data for model
 """
 import gzip
 import os
-import sys
 import random
 import re
 from typing import Dict, List
 
 import pysam
 
+from src.bam import Bam
 from src.loci import BED, Reads
 from src.logger import log
 from src.progress import custom_progress
@@ -28,7 +28,7 @@ def load_ats(path: str) -> Dict:
 
     beds = {}
     header = None
-    progress = custom_progress(io = True)
+    progress = custom_progress(io=True)
     with progress:
         task_id = progress.add_task(
             f"Reading... ", total=os.path.getsize(path))
@@ -54,7 +54,7 @@ def load_ats(path: str) -> Dict:
                     continue
 
                 alpha = data["infered_sites"].split(",")
-                
+
                 if key not in beds.keys():
                     beds[key] = set()
                 try:
@@ -63,8 +63,9 @@ def load_ats(path: str) -> Dict:
                             x = int(float(x))
 
                             beds[key].add(BED(
-                                chrom, x - 1, x, strand, 
-                                "{}_{}".format(data["gene_name"], data["transcript_name"]), str(len(beds) + 1)
+                                chrom, x - 1, x, strand,
+                                "{}_{}".format(data["gene_name"], data["transcript_name"]), str(
+                                    len(beds) + 1)
                             ))
                 except Exception as e:
                     log.debug(e)
@@ -87,7 +88,8 @@ def __extract_information__(line: str):
 
         tmp = re.split(r"[= ]", i)
 
-        tmp_info = tmp[1].strip() if ":" not in tmp[1] else tmp[1].split(":")[1].strip()
+        tmp_info = tmp[1].strip() if ":" not in tmp[1] else tmp[1].split(":")[
+            1].strip()
         data[tmp[0]] = tmp_info.replace("\"", "")
 
     return data
@@ -103,7 +105,7 @@ def load_gtf(path: str) -> Dict:
 
     beds = {}
 
-    progress = custom_progress(io = True)
+    progress = custom_progress(io=True)
     with progress:
         task_id = progress.add_task(
             f"Reading... ", total=os.path.getsize(path))
@@ -121,7 +123,7 @@ def load_gtf(path: str) -> Dict:
 
                 if line[2] != "transcript" and not "RNA" in line[2]:
                     continue
-                
+
                 strand = line[6]
 
                 chrom, start_pos, end_pos = line[0], int(line[3]), int(line[4])
@@ -130,7 +132,7 @@ def load_gtf(path: str) -> Dict:
 
                 if gene not in beds.keys():
                     beds[gene] = set()
-                
+
                 beds[gene].add(BED(
                     chrom, start_pos, end_pos, strand,
                     name=info.get("transcript_name", info.get("Name")),
@@ -149,7 +151,7 @@ def load_utr(path: str, debug: bool = False) -> List[BED]:
 
     res = []
 
-    progress = custom_progress(io = True)
+    progress = custom_progress(io=True)
 
     with progress:
         task_id = progress.add_task(
@@ -184,49 +186,27 @@ def __get_strand__(read: pysam.AlignedSegment) -> str:
         elif read.is_read2 and not read.is_reverse:
             return "-"
         return "+"
- 
+
     return "-" if read.is_reverse else "+"
-   
-
-def load_barcodes(path: str) -> dict:
-    u"""
-    load required barcodes
-
-    :params path
-    """
-    res = {}
-
-    if not os.path.exists(path):
-        return res
-
-    with open(path) as r:
-        for line in r:
-            line = line.strip()
-
-            key = line[:min(3, len(line))]
-
-            temp = res.get(key, set())
-            temp.add(line)
-            res[key] = temp
-
-    return res
 
 
-def __is_barcode_exists__(barcodes: dict, rec: pysam.AlignedSegment) -> bool:
+def __is_barcode_exists__(b: Bam, rec: pysam.AlignedSegment) -> bool:
     u"""
     check whether this read contains required barcode
     :params barcodes: a collection of required barcodes
     :params rec: 
     """
+    if not b.has_barcode:
+        return True
+
     if not rec.has_tag("CB"):
         return False
-    
+
     cb = rec.get_tag("CB")
+    return b.check(cb)
 
-    return cb[:min(3, len(cb))] in barcodes and cb in barcodes[cb[:min(3, len(cb))]]
 
-
-def load_reads(bam: List[str], region: BED, barcode, remove_duplicate_umi: bool = False):
+def load_reads(bam: List[Bam], region: BED, remove_duplicate_umi: bool = False):
     u"""
     Load reads, keys -> R1; values -> R2
     Only both R1
@@ -242,14 +222,16 @@ def load_reads(bam: List[str], region: BED, barcode, remove_duplicate_umi: bool 
         umis = set()
         r1s, r2s = [], []
 
-        r = pysam.AlignmentFile(b) if isinstance(b, str) else b
+        r = pysam.AlignmentFile(str(b)) if isinstance(b, Bam) else b
 
         # check the chromosome format
         if region.chromosome not in r.references:
-            chromosome = region.chromosome.replace("chr", "") if region.chromosome.startswith("chr") else "chr" + region.chromosome
+            chromosome = region.chromosome.replace(
+                "chr", "") if region.chromosome.startswith("chr") else "chr" + region.chromosome
 
             if chromosome not in r.references:
-                log.warn(f"{region.chromosome} or {chromosome} not present in bam file")
+                log.warn(
+                    f"{region.chromosome} or {chromosome} not present in bam file")
                 continue
 
             region.chromosome = chromosome
@@ -262,15 +244,14 @@ def load_reads(bam: List[str], region: BED, barcode, remove_duplicate_umi: bool 
 
             if rec.is_unmapped or rec.is_qcfail or rec.mate_is_unmapped:
                 continue
-            
+
             if __get_strand__(rec) != region.strand:
                 continue
 
             # only use the required barcodes for analysis
-            if barcode.get(b):
-                if not __is_barcode_exists__(barcode[b], rec):
-                    continue
-            
+            if not __is_barcode_exists__(b, rec):
+                continue
+
             # filter duplicate umi
             if remove_duplicate_umi:
                 if not rec.has_tag("UB") or rec.get_tag("UB") in umis:
@@ -287,12 +268,12 @@ def load_reads(bam: List[str], region: BED, barcode, remove_duplicate_umi: bool 
 
         if not_paired:
             for r in r1s:
-                r = Reads.create(r, single_end = True)
+                r = Reads.create(r, single_end=True)
                 if r:
                     yield r, None
 
             for r in r2s:
-                r = Reads.create(r, single_end = True)
+                r = Reads.create(r, single_end=True)
                 if r:
                     yield r, None
 
@@ -317,23 +298,6 @@ def load_reads(bam: List[str], region: BED, barcode, remove_duplicate_umi: bool 
                     yield r1, r2
 
                 i += 1
-
-
-def check_bam(path: str) -> bool:
-    try:
-        with pysam.AlignmentFile(path, require_index = True) as r:
-            pass
-    except IOError as err:
-        log.info(f"try to create index for {path}")
-
-        try:
-            pysam.index(path)
-        except Exception as err:
-            log.error(err)
-            sys.exit(err)
-    except Exception as err:
-        return False
-    return True
 
 
 if __name__ == '__main__':

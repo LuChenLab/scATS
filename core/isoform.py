@@ -623,10 +623,10 @@ class GTFUtils(object):
         path = self.gtf
         # read gtf
         progress = custom_progress(io = True)
-        res = []
         plus, minus = [], []
         gene = None
         transcripts = {}
+
         with progress:
             task_id = progress.add_task(f"Reading...", total=os.path.getsize(path))
 
@@ -642,24 +642,33 @@ class GTFUtils(object):
                     if rec.source == "gene":
                         if gene != rec:
                             if gene is not None:
-                                if rec.strand == "+":
+                                if gene.strand == "+":
                                     plus.append(Coordinate(gene, transcripts))
                                 else:
                                     minus.append(Coordinate(gene, transcripts))
+
                             gene = rec
                             transcripts = {}
-
-                            if debug and len(res) > 30:
-                                break
-                        continue
 
                     if rec.source == "exon":
                         if rec.transcript_name not in transcripts.keys():
                             transcripts[rec.transcript_name] = []
 
                         transcripts[rec.transcript_name].append(rec)
+                    
+                    if debug and (len(plus) + len(minus)) > 30:
+                        break
+
+        if gene is not None:
+            if gene.strand == "+":
+                plus.append(Coordinate(gene, transcripts))
+            else:
+                minus.append(Coordinate(gene, transcripts))
+            
+        del gene, transcripts
 
         # merge gene regions for further filtering
+        res = []
         for temp in [plus, minus]:
             temp = sorted(temp, key=lambda x: [x.chromosome, x.start, x.end])
             
@@ -672,6 +681,7 @@ class GTFUtils(object):
                     curr += i
                 else:
                     res.append(curr)
+                    curr = i
             res.append(curr)
 
         return sorted(res, key=lambda x: [x.chromosome, x.start, x.end])

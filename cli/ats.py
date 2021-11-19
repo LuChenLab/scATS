@@ -16,6 +16,7 @@ from core.model import AtsModel, Parameters
 from src.logger import init_logger, log
 from src.progress import custom_progress
 from src.bam import Bam
+from tqdm import tqdm
 
 
 class ATSParams(object):
@@ -46,10 +47,9 @@ class ATSParams(object):
         log.info("Load UTR")
 
         self.index, self.bam = None, None
-
+        self.bam = bam
         gtf = GTFUtils(gtf, iterator=False)
         self.gtf = gtf.read_gtf(debug)
-        self.bam = bam
         self.n_max_ats = n_max_ats
         self.n_min_ats = n_min_ats
         self.min_ws = min_ws
@@ -60,17 +60,6 @@ class ATSParams(object):
         self.remove_duplicate_umi = remove_duplicate_umi
         self.min_reads = min_reads
         self.utr_length = utr_length
-
-    @staticmethod
-    def check_path(bams: List[str]) -> List[str]:
-        u"""
-        check input bam files
-        """
-        for bam in bams:
-            if not check_bam(bam):
-                log.error(f"{bam} is not a valid bam file")
-                exit(1)
-        return bams
 
     def __str__(self) -> str:
         res = []
@@ -138,51 +127,59 @@ class ATSParams(object):
         u"""
         Factory function to execute the ATS model and format results
         """
-        gene = self.gtf[idx]
         res = []
-        utrs = []
-        reads = {}
 
-        if gene.is_duplicate:
-            return res
-
-        gene.set_bams(self.bam)
-
-        for idx, utr in enumerate(gene.utr_per_transcript(span=self.utr_length // 2)):
-            utrs.append(utr)
-
-            if (idx + 1) not in reads.keys():
-                reads[idx + 1] = []
-
-            for r1, r2 in gene.reads(utr, remove_duplicate_umi=self.remove_duplicate_umi):
-                reads[idx + 1].append([r1, r2])
+        try:
+            gene = self.gtf[idx]
             
-        for idx, rds in reads.items():
-            if len(rds) < self.min_reads:
-                continue
+            utrs = []
+            reads = {}
 
-            utr = utrs[idx - 1]
-            st_arr = self.__format_reads_to_relative__(rds, utr)
+            # 下一步可以注释这个试试
+            # if gene.is_duplicate:
+            #     return res
 
-            if len(st_arr) <= 1:
-                continue
+            gene.set_bams(self.bam)
 
-            m = AtsModel(
-                n_max_ats=self.n_max_ats,
-                n_min_ats=self.n_min_ats,
-                st_arr=st_arr,
-                utr_length=len(utr),
-                min_ws=self.min_ws,
-                max_unif_ws=self.max_unif_ws,
-                max_beta=self.max_beta,
-                fixed_inference_flag=self.fixed_inference_flag
-            )
+            for idx, utr in enumerate(gene.utr_per_transcript(span=self.utr_length // 2)):
+                utrs.append(utr)
 
-            try:
-                res.append(self.format_res(utr, m.run(), len(m.st_arr)))
-            except Exception as err:
-                if self.debug:
-                    log.exception(err)
+                if (idx + 1) not in reads.keys():
+                    reads[idx + 1] = []
+
+                for r1, r2 in gene.reads(utr, remove_duplicate_umi=self.remove_duplicate_umi):
+                    reads[idx + 1].append([r1, r2])
+                
+            for idx, rds in reads.items():
+                if len(rds) < self.min_reads:
+                    continue
+
+                utr = utrs[idx - 1]
+                st_arr = self.__format_reads_to_relative__(rds, utr)
+
+                if len(st_arr) <= 1:
+                    continue
+
+                m = AtsModel(
+                    n_max_ats=self.n_max_ats,
+                    n_min_ats=self.n_min_ats,
+                    st_arr=st_arr,
+                    utr_length=len(utr),
+                    min_ws=self.min_ws,
+                    max_unif_ws=self.max_unif_ws,
+                    max_beta=self.max_beta,
+                    fixed_inference_flag=self.fixed_inference_flag
+                )
+
+                try:
+                    res.append(self.format_res(utr, m.run(), len(m.st_arr)))
+                except Exception as err:
+                    if self.debug:
+                        log.exception(err)
+
+        except Exception as err:
+            if self.debug:
+                log.exception(err)
 
         return res
 
@@ -358,19 +355,18 @@ def ats(
                 header = '\t'.join(params.keys())
                 w.write(f"{header}\n")
 
-                while not progress.finished and consumers:
-                    for res in output_queue.get():
-                        if res:
+                while not progress.finished:
+                    progress.update(task, advance=1)
+                    res = output_queue.get(block=True, timeout=None)
+                    for r in res:
+                        if r:
                             w.write(f"{res}\n")
                             w.flush()
-
-                    progress.update(task, advance=1)
-                    consumers = [x for x in consumers if x.is_alive()]
 
         log.info("DONE")
     except KeyboardInterrupt:
         log.info("KeyboardInterrupt, Existing...")
-        [x.terminate() for x in consumers]
+        [x.terminate() for x in consumers if x.is_alive()]
         sys.exit(0)
 
 

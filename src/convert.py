@@ -194,7 +194,7 @@ class Coordinate(object):
     object to handle the coordanite convertion of isoforms from reference file
     """
 
-    __slots__ = ('gene', 'isoforms', 'ids', 'bams', 'barcodes')
+    __slots__ = ('gene', 'isoforms', 'ids', 'bams')
 
     def __init__(self, gene: Region, isoforms:  Dict):
         u"""
@@ -207,8 +207,6 @@ class Coordinate(object):
         self.isoforms = isoforms
         self.ids = self.__generate_isoform_idx__(isoforms)
         self.bams = []
-
-        self.barcodes = {}
 
     @property
     def chromosome(self):
@@ -243,7 +241,7 @@ class Coordinate(object):
         """
         for bam in bams:
             try:
-                with pysam.AlignmentFile(bam) as r:
+                with pysam.AlignmentFile(str(bam)) as r:
                     pass
             except Exception as err:
                 raise FileNotFoundError(
@@ -309,7 +307,7 @@ class Coordinate(object):
         load reads and convert and assign isoforms
         """
         return load_reads(
-            self.bams, region, self.barcodes,
+            self.bams, region,
             remove_duplicate_umi=remove_duplicate_umi
         )
 
@@ -446,17 +444,19 @@ class Coordinate(object):
                 record_id=self.gene.gene_name
             ))
 
-        utrs = sorted(utrs, key=lambda x: [x.chromosome, x.start, x.end])
         res = []
-        curr_utr = utrs[0]
 
-        for i in utrs[1:]:
-            if curr_utr & i:
-                curr_utr =  curr_utr + i
-            else:
-                res.append(curr_utr)
-                curr_utr = i
-        res.append(curr_utr)
+        if utrs:
+            utrs = sorted(utrs, key=lambda x: [x.chromosome, x.start, x.end])
+            curr_utr = utrs[0]
+
+            for i in utrs[1:]:
+                if curr_utr & i:
+                    curr_utr =  curr_utr + i
+                else:
+                    res.append(curr_utr)
+                    curr_utr = i
+            res.append(curr_utr)
         return res
 
 
