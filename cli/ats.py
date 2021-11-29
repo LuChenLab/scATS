@@ -16,7 +16,6 @@ from core.model import AtsModel, Parameters
 from src.logger import init_logger, log
 from src.progress import custom_progress
 from src.bam import Bam
-from tqdm import tqdm
 
 
 class ATSParams(object):
@@ -149,7 +148,7 @@ class ATSParams(object):
 
                 for r1, r2 in gene.reads(utr, remove_duplicate_umi=self.remove_duplicate_umi):
                     reads[idx + 1].append([r1, r2])
-                
+
             for idx, rds in reads.items():
                 if len(rds) < self.min_reads:
                     continue
