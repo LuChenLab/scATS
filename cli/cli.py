@@ -38,9 +38,9 @@ def cli():
 
 
 cli.add_command(ats)
-cli.add_command(isoform)
+# cli.add_command(isoform)
 cli.add_command(count)
-cli.add_command(coexp)
+# cli.add_command(coexp)
 
 
 if __name__ == "__main__":

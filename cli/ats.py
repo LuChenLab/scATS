@@ -205,7 +205,7 @@ def consumer(input_queue: Queue, output_queue: Queue, params: ATSParams):
     "-g", "--gtf",
     type=click.Path(exists=True),
     required=True,
-    help=""" The path to gtf file. """
+    help=""" The path to genome annotation file in GTF format. """
 )
 @click.option(
     "-o", "--output",

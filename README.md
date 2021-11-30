@@ -35,9 +35,7 @@ Options:
 
 Commands:
   ats      Inference :param debug: enable debug mode
-  coexp    Co-expression Note: The input count file must...
   count    Postprocess: count ats and calculate psi
-  isoform  Infer isoforms :param debug: enable debug...
 ```
 
 ### ats
@@ -53,7 +51,7 @@ Usage: main.py ats [OPTIONS] BAMS...
   :param debug: enable debug mode
 
 Options:
-  -g, --gtf PATH                 The path to gtf file.   [required]
+  -g, --gtf PATH                 The path to genome annotation file in GTF format.   [required]
   -o, --output PATH              The path to output file.   [required]
   -u, --utr-length INTEGER       The length of UTR.
   --n-max-ats INTEGER RANGE      The maximum number of ATSs in same UTR.
@@ -69,32 +67,6 @@ Options:
   -p, --processes INTEGER RANGE  How many cpu to use.
   --remove-duplicate-umi         Only kept reads with different UMIs for
                                  ATS inference.
-  --strict                       Only kept reads with different UMIs for
-                                 ATS inference.
-  -h, --help                     Show this message and exit.
-```
-
-### isoform
-
-Isoform assignment.
-
-```bash
-➜  afe git:(master) ✗ python main.py isoform --help
-Usage: main.py isoform [OPTIONS] BAMS...
-
-  Infer isoforms
-
-Options:
-  -i, --ats PATH                 The path to utr file, bed format.
-                                 [required]
-  -g, --gtf PATH                 The path to reference gtf file.   [required]
-  -o, --output PATH              The path to output file.   [required]
-  --mu-f INTEGER                 The mean of fragment length.
-  --sigma-f INTEGER              The standard deviation of fragment length.
-  --min-frag-length INTEGER      The minimum fragment length.
-  -d, --debug                    Enable debug mode to get more debugging
-                                 information.
-  -p, --processes INTEGER RANGE  How many cpu to use.   [1<=x<=48]
   -h, --help                     Show this message and exit.
 ```
 
@@ -120,6 +92,34 @@ Options:
   -h, --help                     Show this message and exit.
 ```
 
-### Others
+## Example
 
-The go source code under others is used to format and filter the quantification and PSI matrix.
+Please prepare the genome annotation file in GTF format and corresponding genome sequance file in fasta format first.
+
+```bash
+cd simulation
+
+# generate simulation data
+python simulation.py /path/to/gtf /path/to/fasta --n_jobs 2 --total 10000
+
+# run ats model
+python ../main.py ats -g ./tss.gtf -o ./inferred_sites.txt -p 4 ./simu.bam
+```
+
+### The output file details
+
+```bash
+utr     gene_name       transcript_name number_of_reads inferred_sites   alpha_arr       beta_arr        ws      L
+1:1168755-1169255:+     MIR429  MIR429-201      27      1168924,1169077,1169096,1169101 169,322,341,346 5,5,10,5        0.07156744317872403,0.8035226895855316,0.03289719913137757,0.08391005080588618,0.008102617298480465     500
+1:1891221-1891721:+     AL109917.1      AL109917.1-201  10      1891223,1891474,1891539 2,253,318       5,5,10  0.3979824461238993,0.2978253162745582,0.2929895754731792,0.01120266212836311    500
+```
+
+- utr: the genomic location of UTR.
+- gene_name: the name of host gene of this UTR.
+- transcript_name: the name of host transcripts of this UTR.
+- number_of_reads: the number of reads used to infer ATS sites in corresponding UTR.
+- inferred_sites: the inferred ATS sites, multiple sites were seperate by comma.
+- alpha_arr: the alpha of guassion distribution.
+- beta_arr: the beta of guassion distribution.
+- ws: weights of each ATS sites, and weights of reads not belong to each ATS sites.
+- L: the length of UTR, which may larger than 500 (default UTR length). Due to overlapped UTR merging.
