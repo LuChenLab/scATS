@@ -58,7 +58,7 @@ def count_bulk_consumer(bam_files: List[Bam], input_queue: Queue, output_queue: 
                 res[row_id] = {}
 
             for b in bam_files:
-                res[row_id][b.label] = b.reads_bulk(r)
+                res[row_id][b.alias] = b.reads_bulk(r)
         
         output_queue.put(res)
 
